@@ -21,23 +21,37 @@ interface AdminContextType {
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
-const ADMIN_STORAGE_KEY = 'kaleah_admin';
-
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // 检查登录状态
   useEffect(() => {
-    const savedAdmin = localStorage.getItem(ADMIN_STORAGE_KEY);
-    if (savedAdmin) {
+    const checkAuth = async () => {
       try {
-        const adminData = JSON.parse(savedAdmin);
-        setAdmin(adminData);
-      } catch {
-        localStorage.removeItem(ADMIN_STORAGE_KEY);
+        const res = await fetch('/api/admin/auth', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setAdmin({
+              id: data.user.id,
+              username: data.user.username || data.user.email?.split('@')[0] || '管理员',
+              name: data.user.username || null,
+              role: data.user.role || 'admin',
+              is_active: true,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+      } catch (error) {
+        console.error('检查登录状态失败:', error);
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+    checkAuth();
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -46,6 +60,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -54,9 +69,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || '登录失败' };
       }
 
-      const adminData: Admin = data.admin;
-      setAdmin(adminData);
-      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(adminData));
+      setAdmin(data.admin);
       return { success: true };
     } catch (error) {
       console.error('管理员登录异常:', error);
@@ -64,9 +77,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/admin/auth', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('登出失败:', error);
+    }
     setAdmin(null);
-    localStorage.removeItem(ADMIN_STORAGE_KEY);
   }, []);
 
   return (
