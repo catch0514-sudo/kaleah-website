@@ -7,10 +7,7 @@ import {
   Truck,
   Users,
   Newspaper,
-  Package,
   ArrowRight,
-  Clock,
-  CheckCircle,
 } from 'lucide-react';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
@@ -28,26 +25,13 @@ export default function AdminDashboardPage() {
       try {
         const supabase = getSupabaseClient();
 
-        // 获取订单总数
-        const { count: orderCount } = await supabase
-          .from('orders')
-          .select('*', { count: 'exact', head: true });
-
-        // 获取待发货订单数
-        const { count: pendingCount } = await supabase
-          .from('orders')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'paid');
-
-        // 获取用户总数
-        const { count: userCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true });
-
-        // 获取新闻总数
-        const { count: newsCount } = await supabase
-          .from('news')
-          .select('*', { count: 'exact', head: true });
+        const [{ count: orderCount }, { count: pendingCount }, { count: userCount }, { count: newsCount }] =
+          await Promise.all([
+            supabase.from('orders').select('*', { count: 'exact', head: true }),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'paid'),
+            supabase.from('profiles').select('*', { count: 'exact', head: true }),
+            supabase.from('news').select('*', { count: 'exact', head: true }),
+          ]);
 
         setStats({
           totalOrders: orderCount || 0,
@@ -94,7 +78,6 @@ export default function AdminDashboardPage() {
         <p className="text-sm text-gray-500 mt-1">科栎雅后台管理概览</p>
       </div>
 
-      {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {statCards.map((card) => {
           const Icon = card.icon;
@@ -116,7 +99,6 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      {/* 快捷入口 */}
       <h2 className="text-lg font-bold text-gray-900 mb-4">快速入口</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {quickLinks.map((link) => {
