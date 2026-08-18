@@ -1,111 +1,65 @@
-import NextAuth, { AuthOptions } from 'next-auth';
+import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { supabase } from './supabase/client';
 
-// 硬编码管理员账号（兜底测试方案，生产环境应删除）
-const FALLBACK_ADMIN = {
-  id: 'fallback-admin-001',
-  name: '超级管理员',
-  email: 'admin',
-  role: 'super_admin' as const,
-};
-
-const FALLBACK_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123',
-};
-
-export const authOptions: AuthOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      name: 'credentials',
+      name: 'Credentials',
       credentials: {
-        email: { label: '账号', type: 'text' },
+        email: { label: '邮箱', type: 'email' },
         password: { label: '密码', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          console.warn('[NextAuth] authorize: 缺少账号或密码');
-          return null;
-        }
-
-        // ---------- 兜底方案：硬编码管理员 ----------
-        // 当 Supabase 不可用时，允许使用硬编码账号登录
-        if (
-          credentials.email === FALLBACK_CREDENTIALS.username &&
-          credentials.password === FALLBACK_CREDENTIALS.password
-        ) {
-          console.log('[NextAuth] authorize: 使用硬编码管理员登录');
-          return FALLBACK_ADMIN;
-        }
-
-        // ---------- Supabase 数据库验证 ----------
-        try {
-          const client = getSupabaseClient();
-
-          // 检查 Supabase 是否已配置
-          if (!client) {
-            console.warn('[NextAuth] authorize: Supabase 客户端未配置，回退到硬编码');
-            return null; // 兜底方案已在上方处理
-          }
-
-          const { data, error } = await client
-            .from('admins')
-            .select('id, username, name, role, is_active, created_at')
-            .eq('username', credentials.email)
-            .eq('password', credentials.password)
-            .eq('is_active', true)
-            .single();
-
-          if (error) {
-            console.error('[NextAuth] authorize: Supabase 查询错误:', error.message);
-            return null;
-          }
-
-          if (!data) {
-            console.warn('[NextAuth] authorize: 未找到匹配的管理员');
-            return null;
-          }
-
-          console.log(`[NextAuth] authorize: 管理员 ${data.username} 登录成功`);
-          return {
-            id: data.id,
-            name: data.name || data.username,
-            email: data.username,
-            role: data.role,
-          };
-        } catch (err) {
-          console.error('[NextAuth] authorize: 异常:', err);
-          return null;
-        }
+        if (!credentials?.email || !credentials?.password) return null;
+        
+        // 这里需要根据你的实际认证逻辑调整
+        // 例如：查询 Supabase 用户并验证密码
+        // 目前简化示例
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: credentials.email,
+          password: credentials.password,
+        });
+        
+        if (error || !data.user) return null;
+        
+        // 检查用户角色是否为 admin
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .single();
+        
+        return {
+          id: data.user.id,
+          email: data.user.email || '',
+          name: profile?.role || 'user',
+          role: profile?.role || 'user',
+        };
       },
     }),
   ],
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60, // 24 hours
-  },
-  pages: {
-    signIn: '/admin/login',
-  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role: string }).role;
+        token.role = user.role;
         token.id = user.id;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role: string }).role = token.role as string;
-        (session.user as { id: string }).id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.id = token.id as string;
       }
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'kaleah-admin-secret-key-change-in-production',
-  debug: true,
+  pages: {
+    signIn: '/admin/login',
+  },
+  session: {
+    strategy: 'jwt',
+  },
+  secret: process.env.NEXTAUTH_SECRET,
 };
-
-export default NextAuth(authOptions);
